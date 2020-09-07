@@ -16,8 +16,9 @@ top: 10
 在valid/ready 握手协议中，valid 与 data的时序优化比较容易理解，（不熟悉valid/ready协议或者valid打拍方法的）大家可以参考上次推送（[握手协议（pvld/prdy或者valid-ready或AXI）中Valid及data打拍技巧](http://mp.weixin.qq.com/s?__biz=MzIxMjg2ODQxMw==&mid=2247483672&idx=1&sn=62a940a7ec6d84a7da991ab14f4e1d7c&chksm=97becd4aa0c9445cefdab5bb3ec7f8c6400e7ef9702f6369ab88924a5cba118e122a07b17d16&scene=21#wechat_redirect)）。
 但是有时候，关键路径是在ready信号上，如何对ready信号打拍呢？
 
-
 首先将把目标设计想象成一个黑盒子,如图1所示，我们的目标是将READY_DOWN通过打拍的方法获得时序优化。
+
+<!--more-->
 
 ![img](https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/20200907_black_box.JPG)
 
@@ -35,6 +36,8 @@ VALID_DOWN = valid_up;
 这样是行不通的。
 
 一个简单的例子（case 1）就是你让READY_DOWN像一个时钟一个，间隔一个cycle起来一次，那么VALID_UP && READY_UP 与 VALID_DOWN && READY_DOWN无法同步，数据无法传输下去。
+
+
 
 ## 思路：将其分解成两个interfaces
 

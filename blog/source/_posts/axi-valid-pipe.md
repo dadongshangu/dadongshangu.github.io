@@ -15,9 +15,14 @@ tags: verilog
 AXI 协议使用的是valid-ready握手的方式去传输数据。关于valid ready 握手，有几个要点：
 
 - 数据data使用valid作为有效性指示。当valid为1是，data数据才有效。
+
 - valid和ready信号同时为高时，数据传输真正发生。
+
 - valid在没有ready到来的情况下，不能自己变为0。也就是，数据没有处理，必须一直等待。
+
 - ready表征下一级是否准备好。ready信号可以随时起来，随时下去。
+
+<!--more-->
 
 ![valid_ready](https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/20200907_valid_ready.JPG)
 
