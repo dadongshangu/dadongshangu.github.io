@@ -20,16 +20,16 @@
     var CONFIG = {"hostname":"example.com","root":"/","scheme":"Pisces","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":true},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
   </script>
 
-  <meta name="description" content="内容提要 valid 与data 的时序修复时的打拍 如何无气泡？ 预告：ready修复  问题描述AXI 协议使用的是valid-ready握手的方式去传输数据。关于valid ready 握手，有几个要点：  数据data使用valid作为有效性指示。当valid为1是，data数据才有效。 valid和ready信号同时为高时，数据传输真正发生。 valid在没有ready到来的情况下，不能">
+  <meta name="description" content="内容提要 valid 与data 的时序修复时的打拍 如何无气泡？ 预告：ready修复  问题描述AXI 协议使用的是valid-ready握手的方式去传输数据。关于valid ready 握手，有几个要点：  数据data使用valid作为有效性指示。当valid为1是，data数据才有效。  valid和ready信号同时为高时，数据传输真正发生。  valid在没有ready到来的情况下，">
 <meta property="og:type" content="article">
 <meta property="og:title" content="握手协议（pvld&#x2F;prdy或者valid-ready或AXI）中Valid及data打拍技巧">
 <meta property="og:url" content="http://example.com/2020/09/07/axi-valid-pipe/index.html">
 <meta property="og:site_name" content="大东山谷">
-<meta property="og:description" content="内容提要 valid 与data 的时序修复时的打拍 如何无气泡？ 预告：ready修复  问题描述AXI 协议使用的是valid-ready握手的方式去传输数据。关于valid ready 握手，有几个要点：  数据data使用valid作为有效性指示。当valid为1是，data数据才有效。 valid和ready信号同时为高时，数据传输真正发生。 valid在没有ready到来的情况下，不能">
+<meta property="og:description" content="内容提要 valid 与data 的时序修复时的打拍 如何无气泡？ 预告：ready修复  问题描述AXI 协议使用的是valid-ready握手的方式去传输数据。关于valid ready 握手，有几个要点：  数据data使用valid作为有效性指示。当valid为1是，data数据才有效。  valid和ready信号同时为高时，数据传输真正发生。  valid在没有ready到来的情况下，">
 <meta property="og:locale">
 <meta property="og:image" content="https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/20200907_valid_ready.JPG">
 <meta property="article:published_time" content="2020-09-07T14:27:57.000Z">
-<meta property="article:modified_time" content="2020-09-07T14:38:08.921Z">
+<meta property="article:modified_time" content="2020-09-07T16:00:18.624Z">
 <meta property="article:author" content="大东山谷">
 <meta property="article:tag" content="verilog">
 <meta name="twitter:card" content="summary">
@@ -187,10 +187,16 @@
                 <i class="far fa-calendar"></i>
               </span>
               <span class="post-meta-item-text">发表于</span>
-              
 
-              <time title="创建时间：2020-09-07 22:27:57 / 修改时间：22:38:08" itemprop="dateCreated datePublished" datetime="2020-09-07T22:27:57+08:00">2020-09-07</time>
+              <time title="创建时间：2020-09-07 22:27:57" itemprop="dateCreated datePublished" datetime="2020-09-07T22:27:57+08:00">2020-09-07</time>
             </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2020-09-08 00:00:18" itemprop="dateModified" datetime="2020-09-08T00:00:18+08:00">2020-09-08</time>
+              </span>
 
           
 
@@ -210,11 +216,17 @@
 </ul>
 <h2 id="问题描述"><a href="#问题描述" class="headerlink" title="问题描述"></a>问题描述</h2><p>AXI 协议使用的是valid-ready握手的方式去传输数据。关于valid ready 握手，有几个要点：</p>
 <ul>
-<li>数据data使用valid作为有效性指示。当valid为1是，data数据才有效。</li>
-<li>valid和ready信号同时为高时，数据传输真正发生。</li>
-<li>valid在没有ready到来的情况下，不能自己变为0。也就是，数据没有处理，必须一直等待。</li>
-<li>ready表征下一级是否准备好。ready信号可以随时起来，随时下去。</li>
+<li><p>数据data使用valid作为有效性指示。当valid为1是，data数据才有效。</p>
+</li>
+<li><p>valid和ready信号同时为高时，数据传输真正发生。</p>
+</li>
+<li><p>valid在没有ready到来的情况下，不能自己变为0。也就是，数据没有处理，必须一直等待。</p>
+</li>
+<li><p>ready表征下一级是否准备好。ready信号可以随时起来，随时下去。</p>
+</li>
 </ul>
+<a id="more"></a>
+
 <p><img src="https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/20200907_valid_ready.JPG" alt="valid_ready"></p>
 <h2 id="valid与data的时序修复"><a href="#valid与data的时序修复" class="headerlink" title="valid与data的时序修复"></a>valid与data的时序修复</h2><p>对于valid 跟data的时序问题，比较好修，这也是pipeline机制中，最常见的修timing的方法：打一拍。所有的打一拍，都可以抽象为valid-ready data 模型。在这个模型中。valid 和data需要打一拍，改善时序。</p>
 <h3 id="最常见的修复方法"><a href="#最常见的修复方法" class="headerlink" title="最常见的修复方法"></a>最常见的修复方法</h3><p>valid在握手的情况下，打一拍，传到下级，不握手的情况下，维持原值。data数据一样。对于ready则是直接传过去即可。</p>
@@ -249,10 +261,6 @@
     打赏
   </button>
   <div id="qr" style="display: none;">
-      <div style="display: inline-block;">
-        <img src="/true" alt="大东山谷 enable">
-        <p>enable</p>
-      </div>
       
       <div style="display: inline-block;">
         <img src="/images/wechatpay.png" alt="大东山谷 微信支付">
@@ -262,10 +270,6 @@
       <div style="display: inline-block;">
         <img src="/images/alipay.png" alt="大东山谷 支付宝">
         <p>支付宝</p>
-      </div>
-      <div style="display: inline-block;">
-        <img src="/%E5%9D%9A%E6%8C%81%E5%8E%9F%E5%88%9B%E6%8A%80%E6%9C%AF%E5%88%86%E4%BA%AB%EF%BC%8C%E6%82%A8%E7%9A%84%E6%94%AF%E6%8C%81%E5%B0%86%E9%BC%93%E5%8A%B1%E6%88%91%E7%BB%A7%E7%BB%AD%E5%88%9B%E4%BD%9C%EF%BC%81" alt="大东山谷 reward_comment">
-        <p>reward_comment</p>
       </div>
 
   </div>
@@ -460,6 +464,31 @@
 
 
   
+  <script>
+    (function(){
+      var canonicalURL, curProtocol;
+      //Get the <link> tag
+      var x=document.getElementsByTagName("link");
+		//Find the last canonical URL
+		if(x.length > 0){
+			for (i=0;i<x.length;i++){
+				if(x[i].rel.toLowerCase() == 'canonical' && x[i].href){
+					canonicalURL=x[i].href;
+				}
+			}
+		}
+    //Get protocol
+	    if (!canonicalURL){
+	    	curProtocol = window.location.protocol.split(':')[0];
+	    }
+	    else{
+	    	curProtocol = canonicalURL.split(':')[0];
+	    }
+      //Get current URL if the canonical URL does not exist
+	    if (!canonicalURL) canonicalURL = window.location.href;
+	    //Assign script content. Replace current URL with the canonical URL
+      !function(){var e=/([http|https]:\/\/[a-zA-Z0-9\_\.]+\.baidu\.com)/gi,r=canonicalURL,t=document.referrer;if(!e.test(r)){var n=(String(curProtocol).toLowerCase() === 'https')?"https://sp0.baidu.com/9_Q4simg2RQJ8t7jm9iCKT-xh_/s.gif":"//api.share.baidu.com/s.gif";t?(n+="?r="+encodeURIComponent(document.referrer),r&&(n+="&l="+r)):r&&(n+="?l="+r);var i=new Image;i.src=n}}(window);})();
+  </script>
 
 
 
