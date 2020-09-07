@@ -1,4 +1,39 @@
-**push command：**
+## 如何首页不显示全文
+
+之后有两种方法
+
+### 方法一：写概述
+
+在文章的`front-matter`中添加`description`，其中description中的内容就会被显示在首页上，其余一律不显示。
+
+```
+---
+title: 让首页显示部分内容
+date: 2020-02-23 22:55:10
+description: 这是显示在首页的概述，正文内容均会被隐藏。
+---
+12345
+```
+
+比较不方便的是还得写一下概述，很多时候会懒得写概述，于是就需要第二种方法了。
+
+### 方法二：文章截断
+
+在需要截断的地方加入：
+
+```markdown
+<!--more-->
+1
+```
+
+首页就会显示这条以上的所有内容，隐藏接下来的所有内容。
+例如本文会显示到`修改配置`上面。
+
+这个明显就方便很多，但当然有利有弊，比如开头都是废话首页看着就不是很好看，因此我一般会先选择方法二，如果感觉文章前面的写的不太好再用方法一。
+
+
+
+## **push command：**
 
 ```reStructuredText
 git commit -am "Update blog"
@@ -7,7 +42,7 @@ git push origin hexo
 
 需要push到hexo分支
 
-**public：**
+## **public：**
 
 ```reStructuredText
 hexo clean
