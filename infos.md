@@ -102,3 +102,14 @@ More info: [Deployment](https://hexo.io/docs/one-command-deployment.html)
 \1. 使用git clone git@github.com:CrazyMilk/CrazyMilk.github.io.git拷贝仓库（默认分支为hexo）；
 \2. 在本地新拷贝的[http://CrazyMilk.github.io](https://link.zhihu.com/?target=http%3A//CrazyMilk.github.io)文件夹下通过Git bash依次执行下列指令：npm install hexo、npm install、npm install hexo-deployer-git（记得，不需要hexo init这条指令）。
 
+支付宝：
+
+![支付宝](https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/alipay_support.png)
+
+微信支付：
+
+![weixin](https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/wechat_support.png)
+
+公众号：大东山谷
+
+![大东山谷](https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/qr_dadongshangu.png)

@@ -2,6 +2,7 @@
 title: 握手协议（pvld/prdy或者valid-ready或AXI）中ready打拍技巧
 date: 2020-09-07 22:48:43
 tags: verilog
+top: 10
 ---
 
 ## 内容提要
