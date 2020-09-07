@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8"?>
+<search>
+  <entry>
+    <title>握手协议（pvld/prdy或者valid-ready或AXI）中ready打拍技巧</title>
+    <url>/2020/09/07/axi-ready-pipe/</url>
+    <content><![CDATA[<h2 id="内容提要"><a href="#内容提要" class="headerlink" title="内容提要"></a>内容提要</h2><ul>
+<li>ready打拍的问题</li>
+<li>用FIFO的思路去解决</li>
+<li>用Buffer的思路去解决</li>
+</ul>
+<h2 id="问题提出：ready时序如何优化？"><a href="#问题提出：ready时序如何优化？" class="headerlink" title="问题提出：ready时序如何优化？"></a>问题提出：ready时序如何优化？</h2><p>在valid/ready 握手协议中，valid 与 data的时序优化比较容易理解，（不熟悉valid/ready协议或者valid打拍方法的）大家可以参考上次推送（<a href="http://mp.weixin.qq.com/s?__biz=MzIxMjg2ODQxMw==&mid=2247483672&idx=1&sn=62a940a7ec6d84a7da991ab14f4e1d7c&chksm=97becd4aa0c9445cefdab5bb3ec7f8c6400e7ef9702f6369ab88924a5cba118e122a07b17d16&scene=21#wechat_redirect">握手协议（pvld/prdy或者valid-ready或AXI）中Valid及data打拍技巧</a>）。<br>但是有时候，关键路径是在ready信号上，如何对ready信号打拍呢？</p>
+<p>首先将把目标设计想象成一个黑盒子,如图1所示，我们的目标是将READY_DOWN通过打拍的方法获得时序优化。</p>
+<a id="more"></a>
+
+<p><img src="https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/20200907_black_box.JPG" alt="img"></p>
+<p>（图1）</p>
+<h2 id="尝试直接对ready打一拍"><a href="#尝试直接对ready打一拍" class="headerlink" title="尝试直接对ready打一拍"></a>尝试直接对ready打一拍</h2><figure class="highlight verilog"><table><tr><td class="code"><pre><span class="line">READY_UP &lt;= READY_DOWN;</span><br><span class="line">VALID_DOWN = valid_up;</span><br></pre></td></tr></table></figure>
+
+<p><em>（仅示例，非verilog代码。下同）</em></p>
+<p>这样是行不通的。</p>
+<p>一个简单的例子（case 1）就是你让READY_DOWN像一个时钟一个，间隔一个cycle起来一次，那么VALID_UP &amp;&amp; READY_UP 与 VALID_DOWN &amp;&amp; READY_DOWN无法同步，数据无法传输下去。</p>
+<h2 id="思路：将其分解成两个interfaces"><a href="#思路：将其分解成两个interfaces" class="headerlink" title="思路：将其分解成两个interfaces"></a>思路：将其分解成两个interfaces</h2><p>将ready打拍的逻辑想象成一个黑盒子，去分析这个黑盒子的设计，分为up interface 和down interface将问题细化：</p>
+<ul>
+<li>up interface 有VALID_UP, DATA_UP, READY_UP</li>
+<li>down interface 有VALID_DOWN, DATA_DOWN, READY_DOWN<br>可以总结成下面的样子：</li>
+</ul>
+<figure class="highlight verilog"><table><tr><td class="code"><pre><span class="line">READY_UP &lt;= READY_DOWN; <span class="comment">//or READY_UP = function(READY_DOWN_next);</span></span><br><span class="line">transfer_up = VALID_UP &amp;&amp; READY_UP;</span><br><span class="line">transfer_down = VALID_DOWN &amp;&amp; READY_DOWN;</span><br></pre></td></tr></table></figure>
+
+<p>如果去解决刚才例子（case 1）,那么这个黑盒子：</p>
+<blockquote>
+<p>当READY_UP为高的时候，可以接受数据;<br>当READY_DOWN为高的时候，<strong>如果我们有数据可发的话</strong>，我们可以向downstream发送数据;</p>
+</blockquote>
+<p>是不是很像一个FIFO？</p>
+<h1 id="用FIFO去解决"><a href="#用FIFO去解决" class="headerlink" title="用FIFO去解决"></a>用FIFO去解决</h1><p>将一个FIFO插在黑盒子这里，那么就会变成这样子：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/20200907_black_box_fifo.JPG" alt="img"></p>
+<p>（图2）</p>
+<blockquote>
+<p>VALID_UP/READ_YUP ==&gt; FIFO ==&gt; VALID_DOWN/READY_DOWN</p>
+</blockquote>
+<p>也就是:</p>
+<figure class="highlight verilog"><table><tr><td class="code"><pre><span class="line">VALID_UP = fifo_push_valid;</span><br><span class="line">READY_UP = fifo_push_ready;</span><br><span class="line">VALID_DOWN = fifo_pop_valid;READY_DOWN = fifo_pop_ready;</span><br></pre></td></tr></table></figure>
+
+<p>现在问题变成了：<em>如何设计这个FIFO呢？</em></p>
+<ul>
+<li>这个FIFO深度多少？</li>
+<li>怎么设计，能够保证READY_UP是READY_DOWN打过一拍的呢？</li>
+</ul>
+<h2 id="FIFO设计多深？"><a href="#FIFO设计多深？" class="headerlink" title="FIFO设计多深？"></a>FIFO设计多深？</h2><p>因为本身valid/ready协议是<strong>反压协议</strong>(<em>也就是READY_UP为0的时候，不会写FIFO，而不会导致FIFO溢出</em>)而且此处的读写时钟是同一个时钟，是一个同步FIFO，所以FIFO深度是1或者2就足够了。</p>
+<p>深度是1还是2要看极端情况下需要存储几笔数据。</p>
+<p>简单分析可以知道，只有一种情况会去向FIFO中存储数据：</p>
+<ul>
+<li>READY_UP是1，可以从upstream接收数据</li>
+<li>同时READY_DOWN是0，不可以向downstream发送数据</li>
+</ul>
+<p>这种情况在极端情况下最多维持多久呢？<br><strong>答案是：一个周期</strong></p>
+<hr>
+<p>因为如果cycle <em>a</em> 时：READY_DOWN=0,那么cycle <em>a+1</em>时，READY_UP变为0了，开始反压，所以只用存一个数就够了。</p>
+<p>所以设计为一个深度为1的FIFO就可以了。</p>
+<p>深度为1的FIFO有很多特点，设计起来比较简单。比如：wr_ptr/rd_ptr始终指向地址0，所以我们可以删掉wr_ptr和rd_ptr，因为是一个常值0。</p>
+<h2 id="简单的depth-1-FIFO实现"><a href="#简单的depth-1-FIFO实现" class="headerlink" title="简单的depth-1 FIFO实现"></a>简单的depth-1 FIFO实现</h2><p>使用depth-1 FIFO传输数据，可以这样设计：</p>
+<figure class="highlight verilog"><table><tr><td class="code"><pre><span class="line"><span class="comment">// Depth 1 FIFO.</span></span><br><span class="line"><span class="keyword">always</span> @(<span class="keyword">posedge</span> CLK)<span class="keyword">begin</span></span><br><span class="line">	<span class="keyword">if</span>(RESET)     <span class="keyword">begin</span>    </span><br><span class="line">	fifo_line_valid &lt;= <span class="number">0</span>;    </span><br><span class="line">	fifo_push_ready &lt;= <span class="number">1&#x27;b0</span>;    </span><br><span class="line">	fifo_data &lt;= &#123;WIDTH&#123;<span class="number">1&#x27;b0</span>&#125;&#125;;    </span><br><span class="line">	<span class="keyword">end</span></span><br><span class="line">	<span class="keyword">else</span>	<span class="keyword">begin</span></span><br><span class="line">    fifo_push_ready &lt;= fifo_pop_ready;</span><br><span class="line">    	<span class="keyword">if</span> (fifo_push_ready) <span class="keyword">begin</span></span><br><span class="line">    		fifo_line_valid &lt;= fifo_push_valid;</span><br><span class="line">    		fifo_data &lt;= DATA_UP;</span><br><span class="line">    		<span class="keyword">end</span></span><br><span class="line">    	<span class="keyword">else</span>	<span class="keyword">begin</span></span><br><span class="line">        	<span class="keyword">if</span> (fifo_pop_valid &amp;&amp; fifo_pop_ready)</span><br><span class="line">                fifo_line_valid &lt;= <span class="number">1&#x27;b0</span>;</span><br><span class="line">            <span class="keyword">else</span> </span><br><span class="line">            	fifo_line_valid &lt;= fifo_line_valid;</span><br><span class="line">		<span class="keyword">end</span></span><br><span class="line">	<span class="keyword">end</span></span><br><span class="line"><span class="keyword">end</span></span><br><span class="line"><span class="keyword">assign</span> fifo_push_valid = VALID_UP;</span><br><span class="line"><span class="keyword">assign</span> fifo_pop_valid = fifo_line_valid;</span><br><span class="line"><span class="keyword">assign</span> fifo_pop_ready = READY_DOWN;</span><br><span class="line"><span class="keyword">assign</span> READY_UP = fifo_push_ready;</span><br><span class="line"><span class="keyword">assign</span> VALID_DOWN = fifo_line_valid;</span><br><span class="line"><span class="keyword">assign</span> DATA_DOWN = fifo_data;</span><br></pre></td></tr></table></figure>
+
+<p>这解决了READY打拍的问题。但是这里有一些可以改进的地方，比如：</p>
+<ul>
+<li>是不是可以挤掉多于的气泡？</li>
+<li>在FIFO为空的时候，数据是不是可以直接bypass FIFO？</li>
+</ul>
+<h2 id="无气泡传输"><a href="#无气泡传输" class="headerlink" title="无气泡传输"></a>无气泡传输</h2><p>关于无气泡传输，可以参考上一篇推送（<a href="http://mp.weixin.qq.com/s?__biz=MzIxMjg2ODQxMw==&mid=2247483672&idx=1&sn=62a940a7ec6d84a7da991ab14f4e1d7c&chksm=97becd4aa0c9445cefdab5bb3ec7f8c6400e7ef9702f6369ab88924a5cba118e122a07b17d16&scene=21#wechat_redirect"><em>握手协议（pvld/prdy或者valid-ready或AXI）中Valid及data打拍技巧</em></a>）。具体的说，就是既然你这里有个深度为1的FIFO了，那么我是不是可以利用起来，放点数据啊……</p>
+<p>当READY_DOWN持续是0的时候，READY_UP依然可以有一个cycle去接收一笔数据，把FIFO资源利用起来：</p>
+<figure class="highlight verilog"><table><tr><td class="code"><pre><span class="line">fifo_no_push = ~(fifo_push_valid &amp;&amp; fifo_push_ready);</span><br><span class="line">fifo_push_ready &lt;= (fifo_pop_ready||(fifo_no_push &amp;&amp; ~fifo_line_valid));</span><br></pre></td></tr></table></figure>
+
+<p>同样的原因，在RESET情况下，READY_UP可以为1，可以将复位值修改。<br>那么FIFO穿越呢？</p>
+<h2 id="FIFO穿越"><a href="#FIFO穿越" class="headerlink" title="FIFO穿越"></a>FIFO穿越</h2><p>考虑一个特殊情况(case 2)：</p>
+<p><em>假设READY_DOWN在复位之后始终为1，</em></p>
+<p><em>然后某个时刻开始VALID_UP为1了。</em></p>
+<p>是不是每个周期，数据都可以直接传下来而不用进入FIFO，即使READY_DOWN打过一拍？</p>
+<p>换句话说：**<em>如果READY_UP=1, READY_DOWN=1, FIFO是空的这种情况下，数据可以直通**</em>。</p>
+<ul>
+<li>上文特殊情况(case 2)，READY_DOWN/READY_UP一直是1，显然可以。</li>
+<li>READY_UP从0到1的跳变：READY_DOWN也会在前一周期有一个从0到1的跳变。在READY_DOWN为0时，有一笔数据存到FIFO里边（无气泡传输）；当READY_DOWN在时刻<em>a</em>从0变到1时，READY_UP在时刻<em>a+1</em>也会从0变为1。如果此时READY_DOWN也为1，可以直通，不用进入FIFO。也就是：</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">assign pass_through &#x3D; READY_UP &amp;&amp; READY_DOWN &amp;&amp; ~fifo_line_valid;</span><br><span class="line">assign VALID_DOWN &#x3D; pass_through ? VALID_UP : fifo_line_valid;</span><br><span class="line">assign DATA_DOWN &#x3D; pass_through ? DATA_UP : fifo_data;</span><br></pre></td></tr></table></figure>
+
+<p>注意在直通时，我们不希望数据进入FIFO：</p>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">assign fifo_push_valid &#x3D; ~pass_through &amp;&amp; VALID_UP;</span><br></pre></td></tr></table></figure>
+
+<h2 id="将所有这些结合起来："><a href="#将所有这些结合起来：" class="headerlink" title="将所有这些结合起来："></a>将所有这些结合起来：</h2><figure class="highlight verilog"><table><tr><td class="code"><pre><span class="line"><span class="comment">//---------------------------------------</span></span><br><span class="line"><span class="comment">// File Name   : ready_flop.v</span></span><br><span class="line"><span class="comment">// Author      : Xiangzhi Meng</span></span><br><span class="line"><span class="comment">// Date        : 2020-06-06</span></span><br><span class="line"><span class="comment">// Version     : 0.1</span></span><br><span class="line"><span class="comment">// Description :</span></span><br><span class="line"><span class="comment">// 1. ready_flop using one depth-1 FIFO to hold data.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// All rights reserved.</span></span><br><span class="line"><span class="meta">`<span class="meta-keyword">timescale</span> 1ns/1ns</span></span><br><span class="line"><span class="keyword">module</span> ready_flop</span><br><span class="line">	(</span><br><span class="line">	CLK,</span><br><span class="line">    RESET,</span><br><span class="line">    VALID_UP,</span><br><span class="line">    READY_UP,</span><br><span class="line">    DATA_UP,</span><br><span class="line">    VALID_DOWN,</span><br><span class="line">    READY_DOWN,</span><br><span class="line">    DATA_DOWN</span><br><span class="line">    );</span><br><span class="line"><span class="comment">//---------------------------------------</span></span><br><span class="line"><span class="keyword">parameter</span> WIDTH            = <span class="number">32</span>;</span><br><span class="line"><span class="comment">//---------------------------------------</span></span><br><span class="line"><span class="keyword">input</span>                      CLK;</span><br><span class="line"><span class="keyword">input</span>                      RESET;</span><br><span class="line"><span class="comment">//Up stream</span></span><br><span class="line"><span class="keyword">input</span>                      VALID_UP;</span><br><span class="line"><span class="keyword">output</span>                     READY_UP;</span><br><span class="line"><span class="keyword">input</span>  [<span class="number">0</span>:WIDTH-<span class="number">1</span>]         DATA_UP;</span><br><span class="line"><span class="comment">//Down Stream</span></span><br><span class="line"><span class="keyword">output</span>                     VALID_DOWN;</span><br><span class="line"><span class="keyword">input</span>                      READY_DOWN;</span><br><span class="line"><span class="keyword">output</span> [<span class="number">0</span>:WIDTH-<span class="number">1</span>]         DATA_DOWN;</span><br><span class="line"><span class="comment">//---------------------------------------</span></span><br><span class="line"><span class="keyword">wire</span>                       CLK;</span><br><span class="line"><span class="keyword">wire</span>                       RESET;</span><br><span class="line"><span class="comment">//Up stream</span></span><br><span class="line"><span class="keyword">wire</span>                       VALID_UP;</span><br><span class="line"><span class="keyword">wire</span>                       READY_UP;</span><br><span class="line"><span class="keyword">wire</span>   [<span class="number">0</span>:WIDTH-<span class="number">1</span>]         DATA_UP;</span><br><span class="line"><span class="comment">//Down Stream</span></span><br><span class="line"><span class="keyword">wire</span>                       VALID_DOWN;</span><br><span class="line"><span class="keyword">wire</span>                       READY_DOWN;</span><br><span class="line"><span class="keyword">wire</span>   [<span class="number">0</span>:WIDTH-<span class="number">1</span>]         DATA_DOWN;</span><br><span class="line"><span class="keyword">reg</span>                        fifo_line_valid;</span><br><span class="line"><span class="keyword">wire</span>                       fifo_push_valid;</span><br><span class="line"><span class="keyword">reg</span>                        fifo_push_ready;</span><br><span class="line"><span class="keyword">wire</span>                       fifo_pop_ready;</span><br><span class="line"><span class="keyword">wire</span>                       fifo_no_push;</span><br><span class="line"><span class="keyword">wire</span>                       pass_through;</span><br><span class="line"><span class="keyword">wire</span>                       fifo_pop_valid;</span><br><span class="line"><span class="keyword">reg</span>    [<span class="number">0</span>:WIDTH-<span class="number">1</span>]         fifo_data;</span><br><span class="line"><span class="comment">// Depth 1 FIFO.</span></span><br><span class="line"><span class="keyword">always</span> @(<span class="keyword">posedge</span> CLK)	<span class="keyword">begin</span>    </span><br><span class="line">	<span class="keyword">if</span>(RESET)    <span class="keyword">begin</span>    </span><br><span class="line">		fifo_line_valid &lt;= <span class="number">0</span>;</span><br><span class="line">		fifo_push_ready &lt;= <span class="number">1&#x27;b1</span>;    </span><br><span class="line">		fifo_data &lt;= &#123;WIDTH&#123;<span class="number">1&#x27;b0</span>&#125;&#125;;    </span><br><span class="line">		<span class="keyword">end</span>    </span><br><span class="line">	<span class="keyword">else</span>	<span class="keyword">begin</span></span><br><span class="line">		fifo_push_ready &lt;= (fifo_pop_ready||(fifo_no_push &amp;&amp; ~fifo_line_valid));</span><br><span class="line">		<span class="comment">//Bubble clampping: If last cycle there&#x27;s no FIFO push and</span></span><br><span class="line">		<span class="comment">//fifo_line is empty,it can be ready.</span></span><br><span class="line">		<span class="keyword">if</span> (fifo_push_ready)        <span class="keyword">begin</span>            </span><br><span class="line">			fifo_line_valid &lt;= fifo_push_valid;            </span><br><span class="line">			fifo_data &lt;= DATA_UP;        </span><br><span class="line">		<span class="keyword">end</span></span><br><span class="line">		<span class="keyword">else</span>	<span class="keyword">begin</span>            </span><br><span class="line">			<span class="keyword">if</span> (fifo_pop_valid &amp;&amp; fifo_pop_ready)</span><br><span class="line">				fifo_line_valid &lt;= <span class="number">1&#x27;b0</span>;            </span><br><span class="line">			<span class="keyword">else</span></span><br><span class="line">				fifo_line_valid &lt;= fifo_line_valid;        </span><br><span class="line">		<span class="keyword">end</span>    </span><br><span class="line">	<span class="keyword">end</span></span><br><span class="line"><span class="keyword">end</span></span><br><span class="line"><span class="keyword">assign</span> fifo_no_push = ~(fifo_push_valid &amp;&amp; fifo_push_ready);</span><br><span class="line"><span class="keyword">assign</span> pass_through = READY_UP &amp;&amp; READY_DOWN &amp;&amp; ~fifo_line_valid;</span><br><span class="line"><span class="keyword">assign</span> fifo_push_valid = ~pass_through &amp;&amp; VALID_UP;</span><br><span class="line"><span class="keyword">assign</span> fifo_pop_valid = fifo_line_valid;</span><br><span class="line"><span class="keyword">assign</span> fifo_pop_ready = READY_DOWN;</span><br><span class="line"><span class="keyword">assign</span> READY_UP = fifo_push_ready;</span><br><span class="line"></span><br><span class="line"><span class="comment">//bypass</span></span><br><span class="line"><span class="keyword">assign</span> VALID_DOWN = pass_through ? VALID_UP : fifo_line_valid;</span><br><span class="line"><span class="keyword">assign</span> DATA_DOWN = pass_through ? DATA_UP : fifo_data;</span><br><span class="line"><span class="keyword">endmodule</span></span><br></pre></td></tr></table></figure>
+<p><em>(注：代码未经详细验证)</em></p>
+<h2 id="换一种思路"><a href="#换一种思路" class="headerlink" title="换一种思路"></a>换一种思路</h2><p>经过上面对FIFO的分析，我们可以总结起来，主要是以下几点：</p>
+<ul>
+<li>加入一个深度为1的同步FIFO，这个FIFO在READY_DOWN为0,且READY_UP为1时暂存一个数据；</li>
+<li>在READY_DOWN从0-&gt;1时，FIFO里边的数据先输出到下级；</li>
+<li>如果READY_DOWN继续为1，数据可以绕过FIFO直通；</li>
+</ul>
+<p>深度为1的FIFO（不管是同步还是异步FIFO），都是一个特殊的逻辑单元。</p>
+<p>对于深度为1的同步FIFO，其实就是一拍寄存器打拍。<br>所以，我们可以这样重新设计：</p>
+<ol>
+<li>加一级寄存器作为buffer（实际上就是深度为1的FIFO）</li>
+<li>当以下条件满足，这一级寄存器会暂存一级数据：<br>2.1 READY_DOWN是0，并且<br>2.2 READY_UP是1,并且<br>2.3 VALID_UP是1;</li>
+</ol>
+<p>也就是：</p>
+<figure class="highlight verilog"><table><tr><td class="code"><pre><span class="line"><span class="keyword">assign</span> store_data = VALID_UP &amp;&amp; READY_UP &amp;&amp; ~READY_DOWN;</span><br></pre></td></tr></table></figure>
+
+<ol>
+<li>当READY_UP是1时,数据可以直接<em>暴露</em>在下级接口：READY_UP为1时，BUFFER中一定是空的，因为上一个时钟周期数据已经排空了。也就是:</li>
+</ol>
+<figure class="highlight verilog"><table><tr><td class="code"><pre><span class="line"><span class="keyword">assign</span> VALID_DOWN = READY_UP ? VALID_UP : buffer_valid;</span><br></pre></td></tr></table></figure>
+
+<p>这其实就是上面的FIFO直通模式。同样我们可以挤掉气泡：</p>
+<figure class="highlight verilog"><table><tr><td class="code"><pre><span class="line">READY_UP &lt;= READY_DOWN || ((~buffer_valid) &amp;&amp; (~store_data)); </span><br></pre></td></tr></table></figure>
+
+<p>把这所有的总结起来：</p>
+<figure class="highlight verilog"><table><tr><td class="code"><pre><span class="line"><span class="comment">//---------------------------------------</span></span><br><span class="line"><span class="comment">// File Name   : ready_flop.v</span></span><br><span class="line"><span class="comment">// Author      : Xiangzhi Meng</span></span><br><span class="line"><span class="comment">// Date        : 2020-06-06</span></span><br><span class="line"><span class="comment">// Version     : 0.1</span></span><br><span class="line"><span class="comment">// Description :</span></span><br><span class="line"><span class="comment">// 1. ready_flop using one buffer to hold data.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// All rights reserved.</span></span><br><span class="line"><span class="meta">`<span class="meta-keyword">timescale</span> 1ns/1ns</span></span><br><span class="line"><span class="keyword">module</span> ready_flop        </span><br><span class="line">	(</span><br><span class="line">    CLK,</span><br><span class="line">    RESET,</span><br><span class="line">    VALID_UP,</span><br><span class="line">    READY_UP,</span><br><span class="line">    DATA_UP,</span><br><span class="line">    VALID_DOWN,</span><br><span class="line">    READY_DOWN,</span><br><span class="line">    DATA_DOWN</span><br><span class="line">    );</span><br><span class="line"><span class="comment">//---------------------------------------</span></span><br><span class="line"><span class="keyword">parameter</span> WIDTH            = <span class="number">32</span>;</span><br><span class="line"><span class="comment">//---------------------------------------</span></span><br><span class="line"><span class="keyword">input</span>                      CLK;</span><br><span class="line"><span class="keyword">input</span>                      RESET;</span><br><span class="line"><span class="comment">//Up stream</span></span><br><span class="line"><span class="keyword">input</span>                      VALID_UP;</span><br><span class="line"><span class="keyword">output</span>                     READY_UP;</span><br><span class="line"><span class="keyword">input</span>  [<span class="number">0</span>:WIDTH-<span class="number">1</span>]         DATA_UP;</span><br><span class="line"><span class="comment">//Down Stream</span></span><br><span class="line"><span class="keyword">output</span>                     VALID_DOWN;</span><br><span class="line"><span class="keyword">input</span>                      READY_DOWN;</span><br><span class="line"><span class="keyword">output</span> [<span class="number">0</span>:WIDTH-<span class="number">1</span>]         DATA_DOWN;</span><br><span class="line"><span class="comment">//---------------------------------------</span></span><br><span class="line"><span class="keyword">wire</span>                       CLK;</span><br><span class="line"><span class="keyword">wire</span>                       RESET;</span><br><span class="line"><span class="comment">//Up stream</span></span><br><span class="line"><span class="keyword">wire</span>                       VALID_UP;</span><br><span class="line"><span class="keyword">reg</span>                        READY_UP;</span><br><span class="line"><span class="keyword">wire</span>   [<span class="number">0</span>:WIDTH-<span class="number">1</span>]         DATA_UP;</span><br><span class="line"><span class="comment">//Down Stream</span></span><br><span class="line"><span class="keyword">wire</span>                       VALID_DOWN;</span><br><span class="line"><span class="keyword">wire</span>                       READY_DOWN;</span><br><span class="line"><span class="keyword">wire</span>   [<span class="number">0</span>:WIDTH-<span class="number">1</span>]         DATA_DOWN;</span><br><span class="line"><span class="keyword">wire</span>                       store_data;</span><br><span class="line"><span class="keyword">reg</span>    [<span class="number">0</span>:WIDTH-<span class="number">1</span>]         buffered_data;</span><br><span class="line"><span class="keyword">reg</span>                        buffer_valid;</span><br><span class="line"><span class="comment">//---------------------------------------</span></span><br><span class="line"><span class="comment">//buffer.</span></span><br><span class="line"><span class="keyword">assign</span> store_data = VALID_UP &amp;&amp; READY_UP &amp;&amp; ~READY_DOWN;</span><br><span class="line"><span class="keyword">always</span> @(<span class="keyword">posedge</span> CLK)</span><br><span class="line">	<span class="keyword">if</span> (RESET)  buffer_valid &lt;= <span class="number">1&#x27;b0</span>;</span><br><span class="line">	<span class="keyword">else</span>        buffer_valid &lt;= buffer_valid ? ~READY_DOWN: store_data;</span><br><span class="line"><span class="comment">//Note: If now buffer has data, then next valid would be ~READY_DOWN:   </span></span><br><span class="line"><span class="comment">//If downstream is ready, next cycle will be un-valid.    </span></span><br><span class="line"><span class="comment">//If downstream is not ready, keeping high. </span></span><br><span class="line"><span class="comment">// If now buffer has no data, then next valid would be store_data, 1 for store;</span></span><br><span class="line"><span class="keyword">always</span> @(<span class="keyword">posedge</span> CLK)</span><br><span class="line">	<span class="keyword">if</span> (RESET)  buffered_data &lt;= &#123;WIDTH&#123;<span class="number">1&#x27;b0</span>&#125;&#125;;</span><br><span class="line">	<span class="keyword">else</span>        buffered_data &lt;= store_data ? DATA_UP : buffered_data;</span><br><span class="line"></span><br><span class="line"><span class="keyword">always</span> @(<span class="keyword">posedge</span> CLK) <span class="keyword">begin</span></span><br><span class="line">	<span class="keyword">if</span> (RESET)  READY_UP &lt;= <span class="number">1&#x27;b1</span>; <span class="comment">//Reset can be 1.</span></span><br><span class="line">	<span class="keyword">else</span>        READY_UP &lt;= READY_DOWN || ((~buffer_valid) &amp;&amp; (~store_data)); <span class="comment">//Bubule clampping</span></span><br><span class="line">	<span class="keyword">end</span></span><br><span class="line"><span class="comment">//Downstream valid and data.</span></span><br><span class="line"><span class="comment">//Bypass</span></span><br><span class="line"><span class="keyword">assign</span> VALID_DOWN = READY_UP? VALID_UP : buffer_valid;</span><br><span class="line"><span class="keyword">assign</span> DATA_DOWN  = READY_UP? DATA_UP  : buffered_data;</span><br><span class="line"><span class="keyword">endmodule</span></span><br></pre></td></tr></table></figure>
+
+<p><em>(注：代码未经详细验证)</em></p>
+<h2 id="其他"><a href="#其他" class="headerlink" title="其他"></a>其他</h2><ol>
+<li>我在电脑上简单跑了两个波形，FIFO方法和Buffer方法结果是一样的。</li>
+<li>用FIFO去隔离开上下两个interface思考，比较容易想明白。</li>
+<li>无气泡传输、FIFO直通这两个小feature拿掉，也可以工作、也是能实现READY_DOWN时序优化的设计目标的。</li>
+</ol>
+<hr>
+<p>电路设计心得，欢迎关注“数字逻辑电路小站”公众号</p>
+]]></content>
+      <tags>
+        <tag>verilog</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>握手协议（pvld/prdy或者valid-ready或AXI）中Valid及data打拍技巧</title>
+    <url>/2020/09/07/axi-valid-pipe/</url>
+    <content><![CDATA[<h2 id="内容提要"><a href="#内容提要" class="headerlink" title="内容提要"></a>内容提要</h2><ul>
+<li>valid 与data 的时序修复时的打拍</li>
+<li>如何无气泡？</li>
+<li>预告：ready修复</li>
+</ul>
+<h2 id="问题描述"><a href="#问题描述" class="headerlink" title="问题描述"></a>问题描述</h2><p>AXI 协议使用的是valid-ready握手的方式去传输数据。关于valid ready 握手，有几个要点：</p>
+<ul>
+<li><p>数据data使用valid作为有效性指示。当valid为1是，data数据才有效。</p>
+</li>
+<li><p>valid和ready信号同时为高时，数据传输真正发生。</p>
+</li>
+<li><p>valid在没有ready到来的情况下，不能自己变为0。也就是，数据没有处理，必须一直等待。</p>
+</li>
+<li><p>ready表征下一级是否准备好。ready信号可以随时起来，随时下去。</p>
+</li>
+</ul>
+<a id="more"></a>
+
+<p><img src="https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/20200907_valid_ready.JPG" alt="valid_ready"></p>
+<h2 id="valid与data的时序修复"><a href="#valid与data的时序修复" class="headerlink" title="valid与data的时序修复"></a>valid与data的时序修复</h2><p>对于valid 跟data的时序问题，比较好修，这也是pipeline机制中，最常见的修timing的方法：打一拍。所有的打一拍，都可以抽象为valid-ready data 模型。在这个模型中。valid 和data需要打一拍，改善时序。</p>
+<h3 id="最常见的修复方法"><a href="#最常见的修复方法" class="headerlink" title="最常见的修复方法"></a>最常见的修复方法</h3><p>valid在握手的情况下，打一拍，传到下级，不握手的情况下，维持原值。data数据一样。对于ready则是直接传过去即可。</p>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">VALID_DOWN &lt;&#x3D; handshake ? VALID_UP : VALID_DOWN         ;</span><br><span class="line">DATA_DOWN  &lt;&#x3D; handshake ? DATA_UP : DATA_DOWN           ;</span><br><span class="line">READY_UP    &#x3D; READY_DOWN                                ;</span><br></pre></td></tr></table></figure>
+
+<h3 id="进行修改——简化"><a href="#进行修改——简化" class="headerlink" title="进行修改——简化"></a>进行修改——简化</h3><p>对其进行修改，可以发现逻辑进行简化：valid的逻辑，在传输的时候，可以直接使用ready_up。也就是，ready_up是1的时候，你可以传。也就是变为如下代码：</p>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">VALID_DOWN &lt;&#x3D; READY_UP  ? VALID_UP : VALID_DOWN         ;</span><br><span class="line">DATA_DOWN  &lt;&#x3D; handshake ? DATA_UP : DATA_DOWN           ;</span><br><span class="line">READY_UP    &#x3D; READY_DOWN                                ;</span><br></pre></td></tr></table></figure>
+
+<h3 id="进行修改——无气泡传输"><a href="#进行修改——无气泡传输" class="headerlink" title="进行修改——无气泡传输"></a>进行修改——无气泡传输</h3><p>对其继续进行修改，可以发现现在的电路，已经存在了一级寄存器。这一级寄存器，可以给上一级的data，多提供一级存储。也就是说，就算是下级ready是0，只要寄存器里边没有数，上一级仍然可以ready为高，将数据存储一拍。本质上就是消除了一级气泡。</p>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">VALID_DOWN &lt;&#x3D; READY_UP  ? VALID_UP : VALID_DOWN         ;</span><br><span class="line">DATA_DOWN  &lt;&#x3D; handshake ? DATA_UP : DATA_DOWN           ;</span><br><span class="line">assign READY_UP &#x3D; READY_DOWN || ~VALID_DOWN             ;</span><br></pre></td></tr></table></figure>
+
+<h3 id="示例代码"><a href="#示例代码" class="headerlink" title="示例代码"></a>示例代码</h3><p>这是最常用的一个valid打拍的情况。详细示例代码如下，仅供参考：</p>
+<p>(p.s.：本代码为业余时间作为个人兴趣写的代码，未经严谨验证，仅供原型原理说明，可复制粘贴使用，但不承诺准确性。)</p>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">module valid_flop</span><br><span class="line">        (</span><br><span class="line">        CLK                                                                     ,</span><br><span class="line">        RESET                                                                   ,</span><br><span class="line">        VALID_UP                                                                ,</span><br><span class="line">        READY_UP                                                                ,</span><br><span class="line">        DATA_UP                                                                 ,</span><br><span class="line">        VALID_DOWN                                                              ,</span><br><span class="line">        READY_DOWN                                                              ,</span><br><span class="line">        DATA_DOWN</span><br><span class="line">        );</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F;-----------------------------------------------------------------------------</span><br><span class="line">parameter WIDTH            &#x3D; 32                                                 ;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F;-----------------------------------------------------------------------------</span><br><span class="line">input                      CLK                                                  ;</span><br><span class="line">input                      RESET                                                ;</span><br><span class="line">input                      VALID_UP                                             ;</span><br><span class="line">output                     READY_UP                                             ;</span><br><span class="line">input  [WIDTH-1:0]         DATA_UP                                              ;</span><br><span class="line">output                     VALID_DOWN                                           ;</span><br><span class="line">input                      READY_DOWN                                           ;</span><br><span class="line">output [WIDTH-1:0]         DATA_DOWN                                            ;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F;-----------------------------------------------------------------------------</span><br><span class="line">wire                       CLK                                                  ;</span><br><span class="line">wire                       RESET                                                ;</span><br><span class="line">wire                       VALID_UP                                             ;</span><br><span class="line">wire                       READY_UP                                             ;</span><br><span class="line">wire   [WIDTH-1:0]         DATA_UP                                              ;</span><br><span class="line">&#x2F;&#x2F;Down Stream</span><br><span class="line">reg                        VALID_DOWN                                           ;</span><br><span class="line">wire                       READY_DOWN                                           ;</span><br><span class="line">reg    [WIDTH-1:0]         DATA_DOWN                                            ;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F;-----------------------------------------------------------------------------</span><br><span class="line">&#x2F;&#x2F;Valid</span><br><span class="line">always @(posedge CLK)</span><br><span class="line">if (RESET)  VALID_DOWN &lt;&#x3D; 1&#39;b0                                                  ;</span><br><span class="line">else        VALID_DOWN &lt;&#x3D; READY_UP ? VALID_UP : VALID_DOWN                      ;</span><br><span class="line">&#x2F;&#x2F;Data</span><br><span class="line">always @(posedge CLK)</span><br><span class="line">if (RESET)  DATA_DOWN &lt;&#x3D; &#123;WIDTH&#123;1&#39;b0&#125;&#125;                                          ;</span><br><span class="line">else        DATA_DOWN &lt;&#x3D; (READY_UP &amp;&amp; VALID_UP) ? DATA_UP : DATA_DOWN           ;</span><br><span class="line">&#x2F;&#x2F;READY with buble collapsing.</span><br><span class="line">assign READY_UP &#x3D; READY_DOWN || ~VALID_DOWN                                     ;</span><br><span class="line">&#x2F;&#x2F;READY with no buble collapsing.</span><br><span class="line">&#x2F;&#x2F;assign READY_UP &#x3D; READY_DOWN                                                  ;</span><br><span class="line"></span><br><span class="line">endmodule</span><br></pre></td></tr></table></figure>
+
+<h3 id="模型变化"><a href="#模型变化" class="headerlink" title="模型变化"></a>模型变化</h3><p>上面的模型可以有很多变化，比如一种协议，不存在反压，或者说只有valid 和data，数据总是可以发送的。</p>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">VALID_DOWN &lt;&#x3D; VALID_UP        							;</span><br><span class="line">DATA_DOWN  &lt;&#x3D; VALID_UP ? DATA_UP : DATA_DOWN            ;</span><br><span class="line">valid only_no_data模型</span><br></pre></td></tr></table></figure>
+
+<p>上面的模型继续变化，比如只有control信号，没有数据(data)。就简化成直接打一拍了。</p>
+<figure class="highlight plain"><table><tr><td class="code"><pre><span class="line">VALID_DOWN &lt;&#x3D; VALID_UP        							;</span><br></pre></td></tr></table></figure>
+
+<h2 id="下节预告"><a href="#下节预告" class="headerlink" title="下节预告"></a>下节预告</h2><p>valid ready 协议中对ready进行timing 修复打拍的方法。</p>
+]]></content>
+      <tags>
+        <tag>verilog</tag>
+      </tags>
+  </entry>
+</search>
