@@ -1,3 +1,28 @@
+**push command：**
+
+```reStructuredText
+git commit -am "Update blog"
+git push origin hexo
+```
+
+需要push到hexo分支
+
+**public：**
+
+```reStructuredText
+hexo clean
+hexo g
+hexo d
+```
+
+![logo](https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/logo_dadongshangu.jpg)
+
+SPEC:
+
+https://hexo.io/zh-cn/docs/commands.html
+
+
+
 #Branch for development
 
 git branch hexo 
@@ -76,3 +101,4 @@ More info: [Deployment](https://hexo.io/docs/one-command-deployment.html)
 
 \1. 使用git clone git@github.com:CrazyMilk/CrazyMilk.github.io.git拷贝仓库（默认分支为hexo）；
 \2. 在本地新拷贝的[http://CrazyMilk.github.io](https://link.zhihu.com/?target=http%3A//CrazyMilk.github.io)文件夹下通过Git bash依次执行下列指令：npm install hexo、npm install、npm install hexo-deployer-git（记得，不需要hexo init这条指令）。
+
