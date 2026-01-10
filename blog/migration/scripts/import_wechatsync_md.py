@@ -118,22 +118,44 @@ def clean_wechat_links(text: str) -> str:
 
 
 def clean_separators(text: str) -> str:
-    """清理分隔符（如 dadong*shangu, dadong1shangu 等）"""
-    # 删除单独的分隔符行，以及行内的分隔符
+    """清理分隔符（如 dadong*shangu, dadong1shangu 等）
+    分隔符通常用于分隔段落，删除后应在原位置保留段落分隔（空行）
+    """
     lines = text.split("\n")
     cleaned_lines = []
-    for line in lines:
+    for i, line in enumerate(lines):
         stripped = line.strip()
         # 匹配分隔符模式：dadong + 数字/符号 + shangu（单独一行）
         if re.match(r'^dadong[\d\*\-_]*shangu$', stripped, re.IGNORECASE):
+            # 如果前后都有内容，保留一个空行作为段落分隔
+            if i > 0 and i < len(lines) - 1:
+                prev_line = lines[i - 1].strip()
+                next_line = lines[i + 1].strip()
+                if prev_line and next_line:
+                    # 如果前一行不是空行，添加一个空行
+                    if cleaned_lines and cleaned_lines[-1].strip():
+                        cleaned_lines.append("")
             continue
-        # 删除行内的分隔符（dadong + 数字/符号 + shangu），包括前后可能有空格的情况
-        # 匹配 dadong + 任意字符（数字、*、-、_等）+ shangu
-        line = re.sub(r'\s*dadong[\d\*\-_]*shangu\s*', ' ', line, flags=re.IGNORECASE)
-        # 清理多余空格
-        line = re.sub(r'\s+', ' ', line).strip()
-        if line:  # 如果删除分隔符后行不为空，保留
-            cleaned_lines.append(line)
+        
+        # 删除行内的分隔符（dadong + 数字/符号 + shangu）
+        # 分隔符前后如果有内容，在分隔符位置插入换行来分隔段落
+        if re.search(r'dadong[\d\*\-_]*shangu', line, re.IGNORECASE):
+            # 在分隔符位置分割，前后都保留（不使用\b，因为分隔符可能紧贴文字）
+            parts = re.split(r'\s*dadong[\d\*\-_]*shangu\s*', line, flags=re.IGNORECASE)
+            new_lines = []
+            for j, part in enumerate(parts):
+                part = part.strip()
+                if part:
+                    new_lines.append(part)
+                # 如果分隔符前后都有内容，在它们之间插入空行
+                if j < len(parts) - 1 and part and parts[j + 1].strip():
+                    new_lines.append("")
+            if new_lines:
+                cleaned_lines.extend(new_lines)
+        else:
+            # 没有分隔符的行，直接保留（只清理行尾空白）
+            cleaned_lines.append(line.rstrip())
+    
     return "\n".join(cleaned_lines)
 
 
