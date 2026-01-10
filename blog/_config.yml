@@ -6,10 +6,10 @@
 title: 大东山谷
 subtitle: '芯片设计、原创思想不媚俗'
 description: '凡是过往 皆为序章'
-keywords:
+keywords: 芯片设计,数字电路,技术博客,大东山谷,Verilog,FPGA,集成电路
 author: 大东山谷
 language: zh-Hans
-timezone: ''
+timezone: Asia/Shanghai
 
 # URL
 ## If your site is put in a subdirectory, set url as 'http://example.com/child' and root as '/child/'

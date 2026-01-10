@@ -12,6 +12,6 @@ date: 2020-09-08 19:20:07
 * 摩托车骑手；
 * 头马演讲俱乐部（Toastmaster Club)会员;
 * 自媒体原创者，2019年单年度网络累积阅读1000万+;
-* 原创情感公众号：[大东山谷](https://mp.weixin.qq.com/mp/appmsgalbum?action=getalbum&album_id=1500515973546754049&__biz=MzIxMjg2ODQxMw==#wechat_redirect);
+* 原创情感公众号：[大东山谷](https://mp.weixin.qq.com/mp/appmsgalbum?action=getalbum&album_id=1417552598718332928&__biz=MzIxMjYyMDA2Nw==#wechat_redirect);
 * 原创集成电路设计公众号：[数字逻辑电路小站](https://mp.weixin.qq.com/mp/appmsgalbum?action=getalbum&album_id=1500515973546754049&__biz=MzIxMjg2ODQxMw==#wechat_redirect);
 * 知乎[大东山谷](https://www.zhihu.com/people/xiangzhimeng)_获赞13万+；
