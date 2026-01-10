@@ -35,6 +35,25 @@ PROMO_TAIL_PATTERNS = [
     r"点击.*(关注|进入)",
     r"微信公众",
     r"mp\.weixin\.qq\.com",
+    r"往期精彩回顾",
+    r"文章推荐",
+    r"推荐阅读",
+    r"相关阅读",
+    r"精彩回顾",
+    r"往期回顾",
+    r"历史文章",
+]
+
+# 文章开头的推广模式
+PROMO_HEAD_PATTERNS = [
+    r"点击.*继续收到文章",
+    r"点击.*关注",
+    r"长按.*关注",
+    r"扫码关注",
+    r"识别二维码",
+    r"关注.*公众号",
+    r"文字.*©",
+    r"图片.*©",
 ]
 
 
@@ -52,24 +71,158 @@ def normalize_title(s: str) -> str:
     return s
 
 
+def clean_wechat_links(text: str) -> str:
+    """清理微信公众号链接"""
+    # 删除包含 mp.weixin.qq.com 的链接行
+    lines = text.split("\n")
+    cleaned_lines = []
+    for line in lines:
+        # 跳过包含微信公众号链接的行
+        if "mp.weixin.qq.com" in line or "__biz=" in line:
+            continue
+        # 删除行内的微信公众号链接，但保留其他内容
+        line = re.sub(r'\[([^\]]+)\]\(https?://[^\)]*mp\.weixin\.qq\.com[^\)]*\)', r'\1', line)
+        line = re.sub(r'https?://[^\s]*mp\.weixin\.qq\.com[^\s]*', '', line)
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines)
+
+
+def remove_empty_image_captions(text: str) -> str:
+    """删除没有图片的图片说明"""
+    lines = text.split("\n")
+    cleaned_lines = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # 检查是否是图片说明（通常是单独一行，可能是斜体或加粗）
+        is_caption = False
+        if i < len(lines) - 1:
+            # 检查下一行是否是空行或新段落
+            next_line = lines[i + 1] if i + 1 < len(lines) else ""
+            # 如果当前行看起来像图片说明（短行，可能包含图片相关文字），且下一行是空行或新内容
+            if (line.strip() and 
+                len(line.strip()) < 50 and 
+                (not next_line.strip() or next_line.strip().startswith(('#', '*', '-', '1.', '2.')))):
+                # 检查是否包含图片说明关键词
+                caption_keywords = ['图片', '图', 'photo', 'image', '©', '来源', 'via']
+                if any(keyword in line for keyword in caption_keywords):
+                    is_caption = True
+                    # 检查前后是否有图片链接
+                    has_image_before = False
+                    has_image_after = False
+                    # 检查前几行
+                    for j in range(max(0, i - 3), i):
+                        if '![' in lines[j] or '<img' in lines[j] or '](http' in lines[j]:
+                            has_image_before = True
+                            break
+                    # 检查后几行
+                    for j in range(i + 1, min(len(lines), i + 3)):
+                        if '![' in lines[j] or '<img' in lines[j] or '](http' in lines[j]:
+                            has_image_after = True
+                            break
+                    # 如果前后都没有图片，删除这个说明
+                    if not has_image_before and not has_image_after:
+                        i += 1
+                        continue
+        if not is_caption:
+            cleaned_lines.append(line)
+        i += 1
+    return "\n".join(cleaned_lines)
+
+
+def strip_promo_head(md: str) -> str:
+    """清理文章开头的推广内容"""
+    lines = md.split("\n")
+    start_idx = 0
+    # 跳过 front-matter
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                start_idx = i + 1
+                break
+    
+    # 从开头开始查找，找到第一个非推广内容
+    for idx in range(start_idx, min(start_idx + 10, len(lines))):  # 只检查前10行
+        s = lines[idx].strip()
+        if not s:
+            continue
+        # 检查是否是推广内容
+        is_promo = False
+        for pat in PROMO_HEAD_PATTERNS:
+            if re.search(pat, s, re.IGNORECASE):
+                is_promo = True
+                break
+        # 如果找到非推广内容，停止
+        if not is_promo and len(s) > 5:  # 至少5个字符，避免误删
+            break
+        # 如果是推广内容，标记为删除
+        if is_promo:
+            start_idx = idx + 1
+    
+    return "\n".join(lines[start_idx:])
+
+
 def strip_promo_tail(md: str) -> str:
+    """清理文章末尾的推广内容"""
     lines = md.split("\n")
     cut_idx = None
+    
+    # 从后往前查找，找到第一个推广内容标记
     for idx in range(len(lines) - 1, -1, -1):
         s = lines[idx].strip()
         if not s:
             continue
+        # 检查是否是推广标记
         for pat in PROMO_TAIL_PATTERNS:
             if re.search(pat, s, re.IGNORECASE):
                 cut_idx = idx
                 break
         if cut_idx is not None:
             break
+    
+    if cut_idx is None:
+        # 如果没有找到明确的推广标记，检查是否有微信公众号链接
+        for idx in range(len(lines) - 1, max(0, len(lines) - 20), -1):  # 只检查最后20行
+            s = lines[idx].strip()
+            if "mp.weixin.qq.com" in s or "__biz=" in s:
+                cut_idx = idx
+                break
+    
     if cut_idx is None:
         return md.strip()
-    while cut_idx > 0 and not lines[cut_idx - 1].strip():
-        cut_idx -= 1
-    return "\n".join(lines[:cut_idx]).rstrip()
+    
+    # 向上查找，删除推广标记之前的所有空行和链接
+    while cut_idx > 0:
+        prev_line = lines[cut_idx - 1].strip()
+        # 如果前一行是空行，继续向上
+        if not prev_line:
+            cut_idx -= 1
+        # 如果前一行包含微信公众号链接，也删除
+        elif "mp.weixin.qq.com" in prev_line or "__biz=" in prev_line:
+            cut_idx -= 1
+        # 如果前一行看起来像文章推荐标题（短行，可能是链接）
+        elif len(prev_line) < 30 and ("[" in prev_line or "http" in prev_line):
+            cut_idx -= 1
+        else:
+            break
+    
+    # 确保删除推广标记行本身
+    result = "\n".join(lines[:cut_idx]).rstrip()
+    
+    # 再次检查，确保末尾没有推广内容残留
+    result_lines = result.split("\n")
+    for idx in range(len(result_lines) - 1, max(0, len(result_lines) - 5), -1):
+        s = result_lines[idx].strip()
+        if not s:
+            continue
+        for pat in PROMO_TAIL_PATTERNS:
+            if re.search(pat, s, re.IGNORECASE):
+                # 找到推广内容，删除从这一行开始的所有内容
+                return "\n".join(result_lines[:idx]).rstrip()
+        if "mp.weixin.qq.com" in s or "__biz=" in s:
+            return "\n".join(result_lines[:idx]).rstrip()
+    
+    return result
 
 
 def parse_front_matter(md: str):
@@ -177,13 +330,26 @@ def main():
 
         date_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
 
-        # 清理尾部引流
-        body_clean = strip_promo_tail(body)
-
-        # 若正文首行是 "# title"，去掉避免重复显示（可选）
+        # 清理文章内容
+        # 1. 清理开头的推广内容
+        body_clean = strip_promo_head(body)
+        
+        # 2. 清理末尾的推广内容
+        body_clean = strip_promo_tail(body_clean)
+        
+        # 3. 清理微信公众号链接
+        body_clean = clean_wechat_links(body_clean)
+        
+        # 4. 删除没有图片的图片说明
+        body_clean = remove_empty_image_captions(body_clean)
+        
+        # 5. 若正文首行是 "# title"，去掉避免重复显示（可选）
         body_lines = body_clean.splitlines()
         if body_lines and re.match(r"^\s*#\s+", body_lines[0]):
             body_clean = "\n".join(body_lines[1:]).lstrip()
+        
+        # 6. 清理多余的空行
+        body_clean = re.sub(r"\n{3,}", "\n\n", body_clean).strip()
 
         if not fm:
             fm_out = "\n".join(
