@@ -29,6 +29,8 @@ POSTS_DIR = os.path.join(BLOG_DIR, "source", "_posts")
 
 PROMO_TAIL_PATTERNS = [
     r"感谢关注",
+    r"感谢关注.*公众号",
+    r"感谢.*关注",
     r"原创推荐[：:]",
     r"关注公众号",
     r"长按.*(识别|关注)",
@@ -36,12 +38,20 @@ PROMO_TAIL_PATTERNS = [
     r"微信公众",
     r"mp\.weixin\.qq\.com",
     r"往期精彩回顾",
+    r"近期文章回顾",
+    r"近期回顾",
     r"文章推荐",
     r"推荐阅读",
     r"相关阅读",
     r"精彩回顾",
     r"往期回顾",
     r"历史文章",
+    r"猜你喜欢",
+    r"你可能喜欢",
+    r"热门文章",
+    r"精选文章",
+    r"更多精彩",
+    r"延伸阅读",
 ]
 
 # 文章开头的推广模式
@@ -85,6 +95,43 @@ def clean_wechat_links(text: str) -> str:
         line = re.sub(r'https?://[^\s]*mp\.weixin\.qq\.com[^\s]*', '', line)
         cleaned_lines.append(line)
     return "\n".join(cleaned_lines)
+
+
+def clean_extra_whitespace(text: str) -> str:
+    """清理多余的空行和空白字符"""
+    lines = text.split("\n")
+    cleaned_lines = []
+    
+    for line in lines:
+        stripped = line.strip()
+        # 删除单独的下划线行（通常是格式残留）
+        if stripped == "_" or stripped == "__" or stripped == "___":
+            continue
+        # 删除只包含空格和下划线的行
+        if stripped and all(c in " _-" for c in stripped) and len(stripped) <= 5:
+            continue
+        cleaned_lines.append(line.rstrip())
+    
+    # 将连续多个空行压缩为最多1个
+    result_lines = []
+    prev_empty = False
+    for line in cleaned_lines:
+        is_empty = not line.strip()
+        if is_empty:
+            if not prev_empty:  # 只保留第一个空行
+                result_lines.append("")
+            prev_empty = True
+        else:
+            result_lines.append(line)
+            prev_empty = False
+    
+    # 删除开头和结尾的空行
+    while result_lines and not result_lines[0].strip():
+        result_lines.pop(0)
+    while result_lines and not result_lines[-1].strip():
+        result_lines.pop()
+    
+    return "\n".join(result_lines).strip()
 
 
 def remove_empty_image_captions(text: str) -> str:
@@ -348,8 +395,8 @@ def main():
         if body_lines and re.match(r"^\s*#\s+", body_lines[0]):
             body_clean = "\n".join(body_lines[1:]).lstrip()
         
-        # 6. 清理多余的空行
-        body_clean = re.sub(r"\n{3,}", "\n\n", body_clean).strip()
+        # 6. 清理多余的空行和空白字符
+        body_clean = clean_extra_whitespace(body_clean)
 
         if not fm:
             fm_out = "\n".join(
