@@ -31,14 +31,24 @@ PROMO_TAIL_PATTERNS = [
     r"感谢关注",
     r"感谢关注.*公众号",
     r"感谢.*关注",
+    r"求关注.*公众号",
     r"原创推荐[：:]",
+    r"近期原创文章推荐",
+    r"近期.*原创.*文章.*推荐",
     r"关注公众号",
     r"长按.*(识别|关注)",
-    r"点击.*(关注|进入)",
+    r"点击.*(关注|进入|小程序)",
+    r"点击.*小程序.*购买",
+    r"↓.*点击.*小程序.*购买.*↓",
+    r"小程序.*购买",
     r"微信公众",
     r"mp\.weixin\.qq\.com",
     r"往期精彩回顾",
     r"近期文章回顾",
+    r"近期.*文章回顾",
+    r"近期文章[，,].*猜.*喜欢",
+    r"近期.*文章[，,].*猜.*喜欢",
+    r"近期.*猜.*喜欢",
     r"近期回顾",
     r"文章推荐",
     r"推荐阅读",
@@ -47,6 +57,7 @@ PROMO_TAIL_PATTERNS = [
     r"往期回顾",
     r"历史文章",
     r"猜你喜欢",
+    r"猜您喜欢",
     r"你可能喜欢",
     r"热门文章",
     r"精选文章",
@@ -82,8 +93,7 @@ def normalize_title(s: str) -> str:
 
 
 def clean_wechat_links(text: str) -> str:
-    """清理微信公众号链接"""
-    # 删除包含 mp.weixin.qq.com 的链接行
+    """清理微信公众号链接和广告内容"""
     lines = text.split("\n")
     cleaned_lines = []
     for line in lines:
@@ -93,7 +103,37 @@ def clean_wechat_links(text: str) -> str:
         # 删除行内的微信公众号链接，但保留其他内容
         line = re.sub(r'\[([^\]]+)\]\(https?://[^\)]*mp\.weixin\.qq\.com[^\)]*\)', r'\1', line)
         line = re.sub(r'https?://[^\s]*mp\.weixin\.qq\.com[^\s]*', '', line)
+        
+        # 删除行内的广告内容
+        # 删除"↓点击小程序购买↓"等
+        line = re.sub(r'↓.*点击.*小程序.*购买.*↓', '', line, flags=re.IGNORECASE)
+        line = re.sub(r'点击.*小程序.*购买', '', line, flags=re.IGNORECASE)
+        
+        # 删除广告分界线
+        line = re.sub(r'—+.*广告.*分界线.*—+', '', line, flags=re.IGNORECASE)
+        line = re.sub(r'—{3,}.*—{3,}', '', line)  # 删除多个连续的分隔线
+        
         cleaned_lines.append(line)
+    return "\n".join(cleaned_lines)
+
+
+def clean_separators(text: str) -> str:
+    """清理分隔符（如 dadong*shangu, dadong1shangu 等）"""
+    # 删除单独的分隔符行，以及行内的分隔符
+    lines = text.split("\n")
+    cleaned_lines = []
+    for line in lines:
+        stripped = line.strip()
+        # 匹配分隔符模式：dadong + 数字/符号 + shangu（单独一行）
+        if re.match(r'^dadong[\d\*\-_]*shangu$', stripped, re.IGNORECASE):
+            continue
+        # 删除行内的分隔符（dadong + 数字/符号 + shangu），包括前后可能有空格的情况
+        # 匹配 dadong + 任意字符（数字、*、-、_等）+ shangu
+        line = re.sub(r'\s*dadong[\d\*\-_]*shangu\s*', ' ', line, flags=re.IGNORECASE)
+        # 清理多余空格
+        line = re.sub(r'\s+', ' ', line).strip()
+        if line:  # 如果删除分隔符后行不为空，保留
+            cleaned_lines.append(line)
     return "\n".join(cleaned_lines)
 
 
@@ -141,38 +181,70 @@ def remove_empty_image_captions(text: str) -> str:
     i = 0
     while i < len(lines):
         line = lines[i]
-        # 检查是否是图片说明（通常是单独一行，可能是斜体或加粗）
+        stripped = line.strip()
+        
+        # 检查是否是图片说明（括号内的说明文字，如"（不同步的悬浮照|2018.06|大东山谷 摄）"）
         is_caption = False
-        if i < len(lines) - 1:
-            # 检查下一行是否是空行或新段落
+        
+        # 模式1: 括号内的说明文字（全角或半角括号）
+        if re.match(r'^[（(].*[）)]$', stripped):
+            # 检查是否包含图片说明关键词
+            caption_keywords = ['摄', '照', 'photo', 'image', '©', '来源', 'via', '|', '图', '大东山谷']
+            if any(keyword in stripped for keyword in caption_keywords):
+                # 检查前后是否有图片链接
+                has_image_before = False
+                has_image_after = False
+                # 检查前5行
+                for j in range(max(0, i - 5), i):
+                    if '![' in lines[j] or '<img' in lines[j] or '](http' in lines[j] or '](data:' in lines[j]:
+                        has_image_before = True
+                        break
+                # 检查后5行
+                for j in range(i + 1, min(len(lines), i + 6)):
+                    if '![' in lines[j] or '<img' in lines[j] or '](http' in lines[j] or '](data:' in lines[j]:
+                        has_image_after = True
+                        break
+                # 如果前后都没有图片，删除这个说明
+                if not has_image_before and not has_image_after:
+                    i += 1
+                    continue
+        
+        # 模式1.5: 行内括号内的图片说明（如文本中的"（不同步的悬浮照|2018.06|大东山谷 摄）"）
+        # 在行内查找并删除括号内的图片说明
+        if not is_caption and stripped:
+            # 查找括号内的图片说明并删除（更精确的匹配）
+            # 匹配包含"摄"、"照"、"|"等关键词的括号内容
+            line_cleaned = re.sub(r'[（(][^）)]*(?:摄|照|photo|image|©|来源|via|大东山谷|孟祥志|村子)[^）)]*[）)]', '', line)
+            if line_cleaned != line:
+                line = line_cleaned.strip()
+                if not line:  # 如果删除后行为空，跳过
+                    i += 1
+                    continue
+        
+        # 模式2: 斜体或加粗的图片说明（原有逻辑）
+        if not is_caption and i < len(lines) - 1:
             next_line = lines[i + 1] if i + 1 < len(lines) else ""
-            # 如果当前行看起来像图片说明（短行，可能包含图片相关文字），且下一行是空行或新内容
-            if (line.strip() and 
-                len(line.strip()) < 50 and 
+            if (stripped and 
+                len(stripped) < 50 and 
                 (not next_line.strip() or next_line.strip().startswith(('#', '*', '-', '1.', '2.')))):
-                # 检查是否包含图片说明关键词
                 caption_keywords = ['图片', '图', 'photo', 'image', '©', '来源', 'via']
-                if any(keyword in line for keyword in caption_keywords):
+                if any(keyword in stripped for keyword in caption_keywords):
                     is_caption = True
-                    # 检查前后是否有图片链接
                     has_image_before = False
                     has_image_after = False
-                    # 检查前几行
                     for j in range(max(0, i - 3), i):
-                        if '![' in lines[j] or '<img' in lines[j] or '](http' in lines[j]:
+                        if '![' in lines[j] or '<img' in lines[j] or '](http' in lines[j] or '](data:' in lines[j]:
                             has_image_before = True
                             break
-                    # 检查后几行
                     for j in range(i + 1, min(len(lines), i + 3)):
-                        if '![' in lines[j] or '<img' in lines[j] or '](http' in lines[j]:
+                        if '![' in lines[j] or '<img' in lines[j] or '](http' in lines[j] or '](data:' in lines[j]:
                             has_image_after = True
                             break
-                    # 如果前后都没有图片，删除这个说明
                     if not has_image_before and not has_image_after:
                         i += 1
                         continue
-        if not is_caption:
-            cleaned_lines.append(line)
+        
+        cleaned_lines.append(line)
         i += 1
     return "\n".join(cleaned_lines)
 
@@ -224,14 +296,23 @@ def strip_promo_tail(md: str) -> str:
             if re.search(pat, s, re.IGNORECASE):
                 cut_idx = idx
                 break
+        # 额外检查：如果包含"感谢关注"或"求关注"且包含"近期"或"推荐"，也认为是推广内容
+        if cut_idx is None:
+            if ("感谢关注" in s or "求关注" in s) and ("近期" in s or "推荐" in s or "原创" in s):
+                cut_idx = idx
+                break
         if cut_idx is not None:
             break
     
     if cut_idx is None:
-        # 如果没有找到明确的推广标记，检查是否有微信公众号链接
+        # 如果没有找到明确的推广标记，检查是否有微信公众号链接或广告内容
         for idx in range(len(lines) - 1, max(0, len(lines) - 20), -1):  # 只检查最后20行
             s = lines[idx].strip()
             if "mp.weixin.qq.com" in s or "__biz=" in s:
+                cut_idx = idx
+                break
+            # 检查是否包含"感谢关注"、"近期"等关键词（更宽松的匹配）
+            if ("感谢关注" in s or "求关注" in s) and ("近期" in s or "推荐" in s or "原创" in s or "公众号" in s):
                 cut_idx = idx
                 break
     
@@ -378,24 +459,27 @@ def main():
         date_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
 
         # 清理文章内容
-        # 1. 清理开头的推广内容
-        body_clean = strip_promo_head(body)
+        # 1. 清理分隔符（dadong*shangu 等）
+        body_clean = clean_separators(body)
         
-        # 2. 清理末尾的推广内容
+        # 2. 清理开头的推广内容
+        body_clean = strip_promo_head(body_clean)
+        
+        # 3. 清理末尾的推广内容
         body_clean = strip_promo_tail(body_clean)
         
-        # 3. 清理微信公众号链接
+        # 4. 清理微信公众号链接
         body_clean = clean_wechat_links(body_clean)
         
-        # 4. 删除没有图片的图片说明
+        # 5. 删除没有图片的图片说明
         body_clean = remove_empty_image_captions(body_clean)
         
-        # 5. 若正文首行是 "# title"，去掉避免重复显示（可选）
+        # 6. 若正文首行是 "# title"，去掉避免重复显示（可选）
         body_lines = body_clean.splitlines()
         if body_lines and re.match(r"^\s*#\s+", body_lines[0]):
             body_clean = "\n".join(body_lines[1:]).lstrip()
         
-        # 6. 清理多余的空行和空白字符
+        # 7. 清理多余的空行和空白字符
         body_clean = clean_extra_whitespace(body_clean)
 
         if not fm:
