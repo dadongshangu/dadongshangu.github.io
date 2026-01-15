@@ -1,0 +1,91 @@
+# Cursor 项目规则
+
+## 项目类型
+这是一个基于 Hexo 的静态博客项目，包含从微信公众号迁移的文章。
+
+## 代码风格
+- 使用 Python 3.x
+- 文件编码: UTF-8
+- 使用 4 个空格缩进
+- 函数和类使用中文注释说明功能
+
+## 文件结构
+- 文章目录: `blog/source/_posts/`
+- 脚本目录: `blog/migration/scripts/`
+- 数据目录: `blog/migration/data/`
+
+## 重要约定
+
+### 1. 文章格式
+- Front-matter 必须包含 title、date、tags
+- 图片格式: `![图片说明](图片URL)`
+- 图片说明格式: `（图片说明）` 或 `_（图片说明）_`
+- 段落分隔: 在句号、问号、感叹号后添加空行
+- 文章结束标记: `全文完，以下图片待整理`
+
+### 2. 脚本编写
+- 所有脚本应包含错误处理
+- 输出处理进度和结果统计
+- 使用 `[OK]`、`[WARN]`、`[ERROR]` 标记输出
+- 最后输出 `[SUMMARY]` 统计信息
+
+### 3. 图片处理
+- 过滤小图片（<200x200），可能是分隔符
+- 图片说明应紧跟在图片后面
+- 删除没有对应图片的图片说明
+- 删除重复的图片说明
+
+### 4. 内容清理
+- 删除重复段落
+- 清理分隔符（dadong*shangu等）
+- 清理多余空行（连续3个以上压缩为2个）
+- 保留段落之间的空行
+
+### 5. 段落修复
+- 在标点符号后添加段落分隔
+- 识别独立对话行并正确分段
+- 保留特殊格式（列表、引用、图片等）
+- 不要过度添加段落分隔
+
+## 常用脚本
+
+### 修复段落
+```bash
+py migration\scripts\fix_paragraphs.py
+```
+
+### 清理重复图片说明
+```bash
+py migration\scripts\clean_duplicate_captions.py
+```
+
+### 清理重复内容
+```bash
+py migration\scripts\fix_duplicate_content.py
+```
+
+### 添加文章结束标记
+```bash
+py migration\scripts\add_end_marker.py
+```
+
+### 综合修复
+```bash
+py migration\scripts\comprehensive_fix.py
+```
+
+### 智能图片插入
+```bash
+py migration\scripts\smart_insert_images.py
+```
+
+## 注意事项
+
+1. **不要破坏现有格式**: 修复时保留 front-matter、列表、引用等格式
+2. **不要删除文字内容**: 只删除重复内容和无效图片说明
+3. **保持段落自然**: 不要过度添加段落分隔
+4. **检查原始数据**: 如有缺失内容，从 `wechatsync_md/` 目录恢复
+5. **验证修复结果**: 修复后检查文章是否正常
+
+## 响应语言
+始终使用中文简体回复。

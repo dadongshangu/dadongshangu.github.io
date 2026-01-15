@@ -24,7 +24,7 @@ AXI 协议使用的是valid-ready握手的方式去传输数据。关于valid re
 
 <!--more-->
 
-![valid_ready](https://cdn.jsdelivr.net/gh/dadongshangu/CDN@master/images/20200907_valid_ready.JPG)
+![valid_ready](https://cdn.jsdelivr.net/gh//CDN@master/images/20200907_valid_ready.JPG)
 
 ## valid与data的时序修复
 
@@ -113,8 +113,10 @@ always @(posedge CLK)
 if (RESET)  DATA_DOWN <= {WIDTH{1'b0}}                                          ;
 else        DATA_DOWN <= (READY_UP && VALID_UP) ? DATA_UP : DATA_DOWN           ;
 //READY with buble collapsing.
+
 assign READY_UP = READY_DOWN || ~VALID_DOWN                                     ;
 //READY with no buble collapsing.
+
 //assign READY_UP = READY_DOWN                                                  ;
 
 endmodule
